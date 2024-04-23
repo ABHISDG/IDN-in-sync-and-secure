@@ -1,0 +1,121 @@
+stages:
+  - export
+  - pre-deploy
+  - deploy
+  - post-deploy
+
+image: git.identityworksllc.com:5005/pub/devdays-2024/in-sync-and-secure
+
+.default: &default_rule
+  rules:
+    - if: '$EXPORT_TRIGGER == null'
+      when: always
+    - when: never
+
+export-objects:
+    stage: export
+    script:
+        - python ./pipeline-scripts/idn_configuration_hub_export.py
+    artifacts:
+        when: always
+        paths:
+            - config-hub-export
+    environment:
+        name: IID Partner Demo
+    rules:
+        - if: '$EXPORT_TRIGGER'
+          when: always
+        - when: never
+
+test_connection:
+  stage: pre-deploy
+  allow_failure: true
+  script:
+    - python ./pipeline-scripts/idn_test_connection.py
+  artifacts:
+    when: always
+    paths:
+    - ./badges/
+    - junit-test.xml
+    reports:
+      junit: junit-test.xml
+  environment:
+    name: Zac Ambassador Demo
+
+test_workflows:
+  stage: pre-deploy
+  allow_failure: true
+  script:
+  - python ./pipeline-scripts/idn_workflow_tester.py
+  environment:
+    name: Zac Ambassador Demo
+
+deploy_objects:
+  stage: deploy
+  allow_failure: true
+  script:
+    - python ./pipeline-scripts/idn_configuration_hub_backup.py
+    - python ./pipeline-scripts/idn_configuration_hub_deploy.py
+  artifacts:
+    when: always
+    paths:
+        - .
+  environment:
+    name: Zac Ambassador Demo
+  rules:
+    - if: '$EXPORT_TRIGGER == null'
+      when: manual
+    - when: never
+
+post_deploy_test_connection:
+  stage: post-deploy
+  allow_failure: true
+  script:
+    - python ./pipeline-scripts/idn_test_connection.py
+  artifacts:
+    when: always
+    paths:
+    - ./badges/
+    - junit-test.xml
+    reports:
+      junit: junit-test.xml
+  environment:
+    name: Zac Ambassador Demo
+  needs:
+    - deploy_objects
+  rules:
+    - if: '$EXPORT_TRIGGER == null'
+      when: on_success
+    - when: never
+
+post_deploy_test_workflows:
+  stage: post-deploy
+  allow_failure: true
+  script:
+  - python ./pipeline-scripts/idn_workflow_tester.py
+  environment:
+    name: Zac Ambassador Demo
+  needs:
+    - deploy_objects
+  rules:
+    - if: '$EXPORT_TRIGGER == null'
+      when: on_success
+    - when: never
+
+collect_evidence:
+  stage: post-deploy
+  allow_failure: true
+  script:
+    - python ./pipeline-scripts/selenium_test.py
+  environment:
+    name: Zac Ambassador Demo
+  needs:
+    - deploy_objects
+  artifacts:
+    when: always
+    paths:
+    - "*.png"
+  rules:
+    - if: '$EXPORT_TRIGGER == null'
+      when: on_success
+    - when: never
